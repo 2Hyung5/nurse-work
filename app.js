@@ -16,15 +16,10 @@ function defaultState() {
   let year = now.getFullYear();
   let month = now.getMonth() + 2; // 기본은 다음 달
   if (month > 12) { month = 1; year++; }
-  const sample = [
-    ['김서연', 'senior'], ['이지은', 'senior'], ['박민지', 'senior'], ['최유나', 'senior'], ['정하은', 'senior'],
-    ['강수빈', 'regular'], ['조예린', 'regular'], ['윤다현', 'regular'], ['장소희', 'regular'],
-    ['임채원', 'regular'], ['한지민', 'regular'], ['오세영', 'new'], ['서민서', 'new'],
-  ];
   return {
     year,
     month,
-    nurses: sample.map(([name, level]) => ({ id: uid(), name, level })),
+    nurses: [],
     rules: {
       weekday: { D: 3, E: 3, N: 2 },
       weekend: { D: 2, E: 2, N: 2 },
@@ -426,7 +421,9 @@ function renderGrid() {
 
   const w = $('#warnings');
   const hasData = sched.some((r) => r.some(Boolean));
-  if (!hasData) {
+  if (!state.nurses.length) {
+    w.innerHTML = '<p class="hint">왼쪽 ‘간호사 명단’에서 이름을 입력하고 ‘추가’를 눌러 간호사를 등록하세요.</p>';
+  } else if (!hasData) {
     w.innerHTML = '<p class="hint">‘자동 생성’을 누르거나 칸을 클릭해 근무를 입력하세요.</p>';
   } else if (!res.issues.length) {
     w.innerHTML = '<p class="ok">✓ 모든 규칙을 충족합니다.</p>';
@@ -495,6 +492,7 @@ $('#addNurseForm').addEventListener('submit', (e) => {
   $('#nurseName').value = '';
   save();
   render();
+  $('#nurseName').focus();
 });
 
 $('#nurseList').addEventListener('change', (e) => {
