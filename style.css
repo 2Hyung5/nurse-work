@@ -17,6 +17,8 @@
   --N-text: #2f3a8f;
   --OFF: #eef0f3;
   --OFF-text: #8a919c;
+  --V: #fde2ec;
+  --V-text: #a3194f;
   --warn: #e11d48;
   --req: #7c3aed;
 }
@@ -40,6 +42,8 @@
     --N-text: #c3cbff;
     --OFF: #262b33;
     --OFF-text: #7d8592;
+    --V: #4a1d2e;
+    --V-text: #f9a8c8;
     --warn: #fb7185;
     --req: #a78bfa;
   }
@@ -135,6 +139,16 @@ summary { font-weight: 700; cursor: pointer; margin-bottom: 10px; }
 .nurse-list li select { padding: 3px 4px; }
 .nurse-list li button { padding: 3px 8px; font-size: 12px; }
 
+.leave-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.leave-form label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.leave-form select, .leave-form input { width: 100%; min-width: 0; color: var(--text); }
+.leave-form button { grid-column: 1 / -1; }
+.leave-list { list-style: none; margin: 8px 0 0; padding: 0; max-height: 260px; overflow: auto; }
+.leave-list li { display: flex; align-items: center; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.leave-list li .who { flex: 1; min-width: 0; }
+.leave-list li button { padding: 3px 8px; font-size: 12px; }
+.leave-list .empty { color: var(--muted); font-size: 12px; border: 0; }
+
 .rules fieldset {
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -164,6 +178,7 @@ summary { font-weight: 700; cursor: pointer; margin-bottom: 10px; }
 .chip.E { background: var(--E); color: var(--E-text); }
 .chip.N { background: var(--N); color: var(--N-text); }
 .chip.OFF { background: var(--OFF); color: var(--OFF-text); }
+.chip.V { background: var(--V); color: var(--V-text); }
 .chip.req { border: 2px solid var(--req); }
 .chip.warn { box-shadow: inset 0 0 0 2px var(--warn); }
 
@@ -202,6 +217,7 @@ td.cell.D { background: var(--D); color: var(--D-text); }
 td.cell.E { background: var(--E); color: var(--E-text); }
 td.cell.N { background: var(--N); color: var(--N-text); }
 td.cell.OFF { background: var(--OFF); color: var(--OFF-text); font-weight: 400; }
+td.cell.V { background: var(--V); color: var(--V-text); }
 td.cell.req { box-shadow: inset 0 0 0 2px var(--req); }
 td.cell.bad { box-shadow: inset 0 0 0 2px var(--warn); }
 td.cell.req.bad { box-shadow: inset 0 0 0 2px var(--req), inset 0 0 0 4px var(--warn); }

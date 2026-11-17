@@ -3,7 +3,7 @@
 /* ───────────── 상수 ───────────── */
 const WORK = ['D', 'E', 'N'];
 const CYCLE = [null, 'D', 'E', 'N', 'OFF'];
-const REQ_CYCLE = [null, 'OFF', 'D', 'E', 'N'];
+const REQ_CYCLE = [null, 'OFF', 'V', 'D', 'E', 'N'];
 const LEVEL_LABEL = { senior: '책임', regular: '일반', new: '신규' };
 const WEEKDAY = ['일', '월', '화', '수', '목', '금', '토'];
 const STORAGE_KEY = 'nurse-schedule-v1';
@@ -91,6 +91,7 @@ function historyFor(nurseId) {
 
 /* ───────────── 규칙 판단 ───────────── */
 const isWork = (s) => WORK.includes(s);
+const isRest = (s) => s === 'OFF' || s === 'V';
 
 function consecBefore(seq, p, pred) {
   let c = 0;
@@ -102,7 +103,7 @@ function consecBefore(seq, p, pred) {
 function offsSinceNight(seq, p) {
   let c = 0;
   let q = p - 1;
-  while (q >= 0 && seq[q] === 'OFF') { c++; q--; }
+  while (q >= 0 && isRest(seq[q])) { c++; q--; }
   return q >= 0 && seq[q] === 'N' ? c : Infinity;
 }
 
@@ -180,44 +181,53 @@ function buildOnce(ctx) {
       }
     });
 
-    for (const shift of ['N', 'E', 'D']) {
-      while (slots[shift] > 0) {
-        let cands = [];
-        nurses.forEach((n, i) => {
-          if (seqs[i][p] !== null) return;
-          if (!canAssign(seqs[i], p, shift, rules)) return;
-          if (mustRest(i, d)) return;
-          cands.push(i);
-        });
-        if (!cands.length) break;
+    const assignOne = (shift, seniorOnly) => {
+      const cands = [];
+      nurses.forEach((n, i) => {
+        if (seqs[i][p] !== null) return;
+        if (seniorOnly && n.level !== 'senior') return;
+        if (!canAssign(seqs[i], p, shift, rules)) return;
+        if (mustRest(i, d)) return;
+        cands.push(i);
+      });
+      if (!cands.length) return false;
 
-        if (rules.seniorEachShift && !senior[shift] && slots[shift] === 1) {
-          const sc = cands.filter((i) => nurses[i].level === 'senior');
-          if (sc.length) cands = sc;
-        }
-
-        let best = -1;
-        let bestScore = Infinity;
-        for (const i of cands) {
-          const seq = seqs[i];
-          const prev = seq[p - 1];
-          let sc = work[i] * 3 + cnt[i][shift] * (shift === 'N' ? 7 : 4);
-          sc += consecBefore(seq, p, isWork) * 1.5;
-          if (prev === shift) sc -= 7;
-          if ((prev === 'D' && shift === 'E') || (prev === 'E' && shift === 'N')) sc -= 2;
-          if (prev === 'OFF' && isWork(seq[p - 2])) sc += 3; // 하루짜리 휴무 지양
-          if (weekend[d]) sc += wkWork[i] * 3;
-          if (nurses[i].level === 'new' && newbie[shift] > 0) sc += 8;
-          if (rules.seniorEachShift && !senior[shift] && nurses[i].level === 'senior') sc -= 4;
-          sc += Math.random() * 6;
-          if (sc < bestScore) { bestScore = sc; best = i; }
-        }
-
-        seqs[best][p] = shift;
-        slots[shift]--;
-        if (nurses[best].level === 'senior') senior[shift] = true;
-        if (nurses[best].level === 'new') newbie[shift]++;
+      let best = -1;
+      let bestScore = Infinity;
+      for (const i of cands) {
+        const seq = seqs[i];
+        const prev = seq[p - 1];
+        let sc = work[i] * 3 + cnt[i][shift] * (shift === 'N' ? 7 : 4);
+        sc += consecBefore(seq, p, isWork) * 1.5;
+        if (prev === shift) sc -= 7;
+        if ((prev === 'D' && shift === 'E') || (prev === 'E' && shift === 'N')) sc -= 2;
+        if (isRest(prev) && isWork(seq[p - 2])) sc += 3; // 하루짜리 휴무 지양
+        if (weekend[d]) sc += wkWork[i] * 3;
+        if (nurses[i].level === 'new' && newbie[shift] > 0) sc += 8;
+        // 아직 책임이 필요한 다른 근무가 있으면 책임 간호사는 아껴 둔다
+        if (!seniorOnly && rules.seniorEachShift && nurses[i].level === 'senior'
+          && WORK.some((w) => w !== shift && !senior[w] && slots[w] > 0)) sc += 10;
+        sc += Math.random() * 6;
+        if (sc < bestScore) { bestScore = sc; best = i; }
       }
+
+      seqs[best][p] = shift;
+      slots[shift]--;
+      if (nurses[best].level === 'senior') senior[shift] = true;
+      if (nurses[best].level === 'new') newbie[shift]++;
+      return true;
+    };
+
+    // 1단계: 근무마다 책임 간호사 먼저 배치 (후보가 적은 근무부터)
+    if (rules.seniorEachShift) {
+      const seniorFree = (shift) => nurses.filter((n, i) => n.level === 'senior' && seqs[i][p] === null
+        && canAssign(seqs[i], p, shift, rules) && !mustRest(i, d)).length;
+      const order = WORK.filter((w) => slots[w] > 0 && !senior[w]).sort((a, b) => seniorFree(a) - seniorFree(b));
+      for (const shift of order) if (!senior[shift]) assignOne(shift, true);
+    }
+    // 2단계: 나머지 인원 채우기
+    for (const shift of ['N', 'E', 'D']) {
+      while (slots[shift] > 0 && assignOne(shift, false));
     }
 
     nurses.forEach((_, i) => {
@@ -227,7 +237,7 @@ function buildOnce(ctx) {
         work[i]++;
         cnt[i][s]++;
         if (weekend[d]) wkWork[i]++;
-      } else {
+      } else if (s === 'OFF') {
         offs[i]++;
       }
     });
@@ -244,8 +254,8 @@ function analyze(ctx, schedule) {
   const bad = new Set();
   let penalty = 0;
 
-  const daily = Array.from({ length: days }, () => ({ D: 0, E: 0, N: 0, OFF: 0, senior: { D: false, E: false, N: false } }));
-  const stats = nurses.map(() => ({ D: 0, E: 0, N: 0, OFF: 0, wkOff: 0 }));
+  const daily = Array.from({ length: days }, () => ({ D: 0, E: 0, N: 0, OFF: 0, V: 0, senior: { D: false, E: false, N: false } }));
+  const stats = nurses.map(() => ({ D: 0, E: 0, N: 0, OFF: 0, V: 0, wkOff: 0 }));
 
   nurses.forEach((n, i) => {
     const row = schedule[i];
@@ -278,7 +288,7 @@ function analyze(ctx, schedule) {
           const r = offsSinceNight(seq, p);
           if (r < rules.nightRest) mark(`나이트 후 휴무 ${r}일 (최소 ${rules.nightRest})`, 200);
         }
-        if (prev === 'OFF' && seq[p + 1] === 'OFF') penalty += 4; // 고립된 근무일
+        if (isRest(prev) && isRest(seq[p + 1])) penalty += 4; // 고립된 근무일
       }
     }
     const filled = row.filter(Boolean).length;
@@ -351,6 +361,7 @@ function currentSchedule(ctx) {
 function render() {
   $('#monthLabel').textContent = `${state.year}년 ${state.month}월`;
   renderNurses();
+  renderLeaves();
   renderRules();
   renderGrid();
 }
@@ -367,6 +378,57 @@ function renderNurses() {
       <button data-act="up" title="위로">↑</button>
       <button data-act="del" title="삭제">삭제</button>
     </li>`).join('');
+}
+
+/* 휴가·근무 신청을 연속된 기간 단위로 묶기 */
+function requestRanges() {
+  const md = monthData();
+  const out = [];
+  state.nurses.forEach((n) => {
+    const req = md.requests[n.id] || {};
+    const days = Object.keys(req).map(Number).sort((a, b) => a - b);
+    let cur = null;
+    for (const d of days) {
+      if (cur && d === cur.end + 1 && req[d] === cur.type) { cur.end = d; continue; }
+      if (cur) out.push(cur);
+      cur = { nurse: n, type: req[d], start: d, end: d };
+    }
+    if (cur) out.push(cur);
+  });
+  return out.sort((a, b) => a.start - b.start || a.nurse.name.localeCompare(b.nurse.name, 'ko'));
+}
+
+const REQ_LABEL = { V: '연차', OFF: '휴무', D: 'D 신청', E: 'E 신청', N: 'N 신청' };
+const isoDate = (y, m, d) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+function renderLeaves() {
+  const sel = $('#leaveNurse');
+  const keep = sel.value;
+  sel.innerHTML = state.nurses.length
+    ? state.nurses.map((n) => `<option value="${n.id}">${esc(n.name)}</option>`).join('')
+    : '<option value="">간호사를 먼저 추가하세요</option>';
+  if (state.nurses.some((n) => n.id === keep)) sel.value = keep;
+
+  // 날짜 칸이 비었거나 다른 달이면 이번 달 1일로 맞춤
+  const prefix = isoDate(state.year, state.month, 1).slice(0, 7);
+  for (const id of ['#leaveStart', '#leaveEnd']) {
+    const el = $(id);
+    if (!el.value.startsWith(prefix)) el.value = isoDate(state.year, state.month, 1);
+  }
+
+  const ranges = requestRanges();
+  $('#leaveCount').textContent = `(${ranges.length}건)`;
+  $('#leaveList').innerHTML = ranges.length
+    ? ranges.map((r) => {
+      const len = r.end - r.start + 1;
+      const when = len === 1 ? `${state.month}/${r.start + 1}` : `${state.month}/${r.start + 1}~${state.month}/${r.end + 1} (${len}일)`;
+      return `<li data-id="${r.nurse.id}" data-start="${r.start}" data-end="${r.end}">
+        <span class="chip ${r.type}">${REQ_LABEL[r.type]}</span>
+        <span class="who">${esc(r.nurse.name)} · ${when}</span>
+        <button type="button" data-act="del-leave">삭제</button>
+      </li>`;
+    }).join('')
+    : `<li class="empty">${state.month}월 신청 내역이 없습니다.</li>`;
 }
 
 function renderRules() {
@@ -392,7 +454,7 @@ function renderGrid() {
     const cls = ['day', w === 0 ? 'sun' : '', w === 6 ? 'sat' : '', md.holidays.includes(d) ? 'holiday' : ''].join(' ');
     html += `<th class="${cls}" data-day="${d}" title="클릭하여 공휴일 지정/해제">${d + 1}<small>${md.holidays.includes(d) ? '휴' : WEEKDAY[w]}</small></th>`;
   }
-  html += '<th class="stat">D</th><th class="stat">E</th><th class="stat">N</th><th class="stat">OFF</th><th class="stat" title="주말·공휴일 휴무">주휴</th></tr></thead><tbody>';
+  html += '<th class="stat">D</th><th class="stat">E</th><th class="stat">N</th><th class="stat">OFF</th><th class="stat" title="연차·휴가">V</th><th class="stat" title="주말·공휴일 휴무">주휴</th></tr></thead><tbody>';
 
   state.nurses.forEach((n, i) => {
     const req = md.requests[n.id] || {};
@@ -403,7 +465,7 @@ function renderGrid() {
       html += `<td class="${cls}" data-n="${i}" data-d="${d}">${s === 'OFF' ? 'O' : s || ''}</td>`;
     }
     const st = res.stats[i];
-    html += `<td class="stat">${st.D}</td><td class="stat">${st.E}</td><td class="stat">${st.N}</td><td class="stat">${st.OFF}</td><td class="stat">${st.wkOff}</td></tr>`;
+    html += `<td class="stat">${st.D}</td><td class="stat">${st.E}</td><td class="stat">${st.N}</td><td class="stat">${st.OFF}</td><td class="stat">${st.V}</td><td class="stat">${st.wkOff}</td></tr>`;
   });
   html += '</tbody><tfoot>';
 
@@ -414,7 +476,7 @@ function renderGrid() {
       const n = ctx.need[d][s];
       html += `<td class="${c < n ? 'short' : ''}" title="필요 ${n}명">${c}</td>`;
     }
-    html += '<td colspan="5"></td></tr>';
+    html += '<td colspan="6"></td></tr>';
   }
   html += '</tfoot>';
   $('#grid').innerHTML = html;
@@ -434,7 +496,7 @@ function renderGrid() {
   const mode = document.querySelector('input[name="mode"]:checked').value;
   $('#modeHint').textContent = mode === 'shift'
     ? '칸을 클릭하면 D → E → N → OFF → 빈칸 순으로 바뀝니다. 날짜 머리글을 클릭하면 공휴일로 지정됩니다.'
-    : '휴무·근무 신청: 클릭하면 OFF → D → E → N → 해제 순으로 바뀝니다. 신청한 칸은 자동 생성 때 그대로 유지됩니다.';
+    : '휴무·근무 신청: 클릭하면 OFF → V(연차) → D → E → N → 해제 순으로 바뀝니다. 신청한 칸은 자동 생성 때 그대로 유지됩니다.';
 }
 
 /* ───────────── 이벤트 ───────────── */
@@ -480,6 +542,7 @@ $('#grid').addEventListener('click', (e) => {
   }
   save();
   renderGrid();
+  renderLeaves();
 });
 
 document.querySelectorAll('input[name="mode"]').forEach((r) => r.addEventListener('change', renderGrid));
@@ -533,6 +596,55 @@ document.querySelectorAll('[data-rule]').forEach((el) => {
   });
 });
 
+function parseDate(v) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || '');
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+}
+
+$('#leaveStart').addEventListener('change', () => {
+  if ($('#leaveEnd').value < $('#leaveStart').value) $('#leaveEnd').value = $('#leaveStart').value;
+});
+
+$('#leaveForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const nurse = state.nurses.find((n) => n.id === $('#leaveNurse').value);
+  if (!nurse) { toast('간호사를 먼저 추가하세요.'); return; }
+  const type = $('#leaveType').value;
+  const start = parseDate($('#leaveStart').value);
+  const end = parseDate($('#leaveEnd').value) || start;
+  if (!start) { toast('시작일을 입력하세요.'); return; }
+  if (end < start) { toast('종료일이 시작일보다 빠릅니다.'); return; }
+  const total = Math.round((end - start) / 86400000) + 1;
+  if (total > 62) { toast('한 번에 최대 62일까지 신청할 수 있어요.'); return; }
+
+  let touchesGenerated = false;
+  for (const t = new Date(start); t <= end; t.setDate(t.getDate() + 1)) {
+    const md = monthData(t.getFullYear(), t.getMonth() + 1);
+    const d = t.getDate() - 1;
+    (md.requests[nurse.id] ||= {})[d] = type;
+    const row = md.schedule[nurse.id];
+    if (row) { row[d] = type; touchesGenerated = true; }
+  }
+  save();
+  render();
+  toast(`${nurse.name} ${REQ_LABEL[type]} ${total}일 추가${touchesGenerated ? ' · 자동 생성을 다시 누르면 반영돼요' : ''}`);
+});
+
+$('#leaveList').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-act="del-leave"]');
+  if (!btn) return;
+  const li = btn.closest('li');
+  const md = monthData();
+  const id = li.dataset.id;
+  const req = md.requests[id] || {};
+  for (let d = Number(li.dataset.start); d <= Number(li.dataset.end); d++) {
+    delete req[d];
+    if (md.schedule[id]) md.schedule[id][d] = null;
+  }
+  save();
+  render();
+});
+
 $('#prevMonth').addEventListener('click', () => {
   [state.year, state.month] = prevYM(state.year, state.month);
   save();
@@ -572,11 +684,11 @@ $('#csvBtn').addEventListener('click', () => {
   const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
   const header = ['이름', '등급'];
   for (let d = 0; d < ctx.days; d++) header.push(`${d + 1}(${WEEKDAY[dow(state.year, state.month, d)]})`);
-  header.push('D', 'E', 'N', 'OFF');
+  header.push('D', 'E', 'N', 'OFF', 'V');
   const lines = [header.map(q).join(',')];
   state.nurses.forEach((n, i) => {
     const st = res.stats[i];
-    lines.push([n.name, LEVEL_LABEL[n.level], ...sched[i].map((s) => s || ''), st.D, st.E, st.N, st.OFF].map(q).join(','));
+    lines.push([n.name, LEVEL_LABEL[n.level], ...sched[i].map((s) => s || ''), st.D, st.E, st.N, st.OFF, st.V].map(q).join(','));
   });
   const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
