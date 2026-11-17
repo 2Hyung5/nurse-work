@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>간호사 근무표</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>간호사 근무표</h1>
+    <div class="month-nav">
+      <button id="prevMonth" aria-label="이전 달">‹</button>
+      <span id="monthLabel"></span>
+      <button id="nextMonth" aria-label="다음 달">›</button>
+    </div>
+    <div class="actions">
+      <button id="generateBtn" class="primary">자동 생성</button>
+      <button id="clearBtn">근무 지우기</button>
+      <button id="csvBtn">CSV 내보내기</button>
+      <button id="printBtn">인쇄</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel settings">
+      <details open>
+        <summary>간호사 명단 <span id="nurseCount" class="muted"></span></summary>
+        <form id="addNurseForm" class="add-nurse">
+          <input id="nurseName" placeholder="이름" required maxlength="20" />
+          <select id="nurseLevel">
+            <option value="senior">책임</option>
+            <option value="regular" selected>일반</option>
+            <option value="new">신규</option>
+          </select>
+          <button type="submit">추가</button>
+        </form>
+        <ul id="nurseList" class="nurse-list"></ul>
+      </details>
+
+      <details open>
+        <summary>근무 규칙</summary>
+        <div class="rules">
+          <fieldset>
+            <legend>평일 필요 인원</legend>
+            <label>D <input type="number" min="0" data-rule="weekday.D" /></label>
+            <label>E <input type="number" min="0" data-rule="weekday.E" /></label>
+            <label>N <input type="number" min="0" data-rule="weekday.N" /></label>
+          </fieldset>
+          <fieldset>
+            <legend>주말·공휴일 필요 인원</legend>
+            <label>D <input type="number" min="0" data-rule="weekend.D" /></label>
+            <label>E <input type="number" min="0" data-rule="weekend.E" /></label>
+            <label>N <input type="number" min="0" data-rule="weekend.N" /></label>
+          </fieldset>
+          <fieldset>
+            <legend>제약 조건</legend>
+            <label>최대 연속 근무일 <input type="number" min="1" data-rule="maxConsecWork" /></label>
+            <label>최대 연속 나이트 <input type="number" min="1" data-rule="maxConsecNight" /></label>
+            <label>나이트 후 최소 휴무 <input type="number" min="0" data-rule="nightRest" /></label>
+            <label>월 최소 휴무일 <input type="number" min="0" data-rule="minOff" /></label>
+            <label class="check"><input type="checkbox" data-rule="seniorEachShift" /> 근무마다 책임 간호사 1명 이상</label>
+          </fieldset>
+          <p class="hint">금지 패턴: N→D, N→E, E→D는 자동으로 피합니다.</p>
+        </div>
+      </details>
+    </section>
+
+    <section class="panel board">
+      <div class="board-head">
+        <div class="mode" role="radiogroup" aria-label="편집 모드">
+          <label><input type="radio" name="mode" value="shift" checked /> 근무 편집</label>
+          <label><input type="radio" name="mode" value="request" /> 근무 신청 (고정)</label>
+        </div>
+        <div class="legend">
+          <span class="chip D">D 데이</span>
+          <span class="chip E">E 이브닝</span>
+          <span class="chip N">N 나이트</span>
+          <span class="chip OFF">OFF 휴무</span>
+          <span class="chip req">신청</span>
+          <span class="chip warn">규칙 위반</span>
+        </div>
+      </div>
+      <p class="hint" id="modeHint"></p>
+      <div class="table-wrap">
+        <table id="grid"></table>
+      </div>
+      <div id="warnings" class="warnings"></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
